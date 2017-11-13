@@ -1,0 +1,51 @@
+package be.steformations.pc.ticketmaster.ejb;
+
+import java.util.GregorianCalendar;
+
+import be.steformations.pc.ticketmaster.common.beans.Booking;
+import be.steformations.pc.ticketmaster.common.beans.Show;
+import be.steformations.pc.ticketmaster.jms.TicketMasterJmsProducer;
+import be.steformations.pc.ticketmaster.jpa.entities.ShowEntity;
+import be.steformations.pc.ticketmaster.jpa.repositories.JpaTicketMasterService;
+import be.steformations.pc.ticketmaster.mail.TicketMasterMailProducer;
+
+@javax.ejb.Stateless
+public class EjbTicketMasterService {
+
+	@javax.persistence.PersistenceContext(unitName="ticketmaster")
+	private javax.persistence.EntityManager entityManager;
+	@javax.ejb.EJB private TicketMasterJmsProducer jmsProducer;
+	@javax.ejb.EJB private TicketMasterMailProducer mailSender;
+	private JpaTicketMasterService jpaService;
+	
+	@javax.annotation.PostConstruct
+	private void postConstruct() {
+		this.jpaService = new JpaTicketMasterService(this.entityManager);
+	}
+	
+	public Show createShow(String title, int year, int month, int day, int hour, int minutes, int venue) {
+		ShowEntity entity = this.jpaService.createShow(title, year, month, day, hour, minutes, venue);
+		this.jmsProducer.broadcast(entity);
+		return entity;
+	}
+
+	public Booking createBooking(int show, int client) {
+		Booking booking = this.jpaService.createBooking(show, client);
+		// this.mailSender.send(booking);
+		return booking;
+	}
+	
+	public void cleanShows() {
+		java.util.Calendar calendar = GregorianCalendar.getInstance();
+		calendar.set(java.util.Calendar.HOUR_OF_DAY, 0);
+		calendar.set(java.util.Calendar.MINUTE, 0);
+		calendar.set(java.util.Calendar.SECOND, 0);
+		calendar.set(java.util.Calendar.MILLISECOND, 0);
+		
+		java.util.List<ShowEntity> toDelete 
+			= this.jpaService.findAllShowsByDayLowerThan(calendar.getTime());
+		for (ShowEntity entity : toDelete) {
+			this.jpaService.removeShow(entity.getId());
+		}
+	}
+}
